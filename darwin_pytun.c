@@ -542,8 +542,7 @@ static struct PyModuleDef pytun_module =
 #endif
 
 #if PY_MAJOR_VERSION >= 3
-
-PyMODINIT_FUNC PyInit_pytun(void)
+PyMODINIT_FUNC PyInit_pytun_pmd3(void)
 #else
 PyMODINIT_FUNC initpytun(void)
 #endif
@@ -554,7 +553,7 @@ PyMODINIT_FUNC initpytun(void)
 #if PY_MAJOR_VERSION >= 3
     m = PyModule_Create(&pytun_module);
 #else
-    m = Py_InitModule("pytun", NULL);
+    m = Py_InitModule(MODULE_NAME, NULL);
 #endif
     if (m == NULL) {
         goto error;
