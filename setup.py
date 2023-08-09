@@ -7,16 +7,16 @@ if sys.platform == 'darwin':
 else:
     sources = ['linux_pytun.c']
 
-setup(name='python-pytun',
-      author='montag451',
-      author_email='montag451@laposte.net',
-      maintainer='montag451',
-      maintainer_email='montag451@laposte.net',
-      url='https://github.com/montag451/pytun',
+setup(name='pytun-pmd3',
+      author='doronz88',
+      author_email='doron88@gmail.com',
+      maintainer='doronz88',
+      maintainer_email='doron88@gmail.com',
+      url='https://github.com/doronz88/pytun-pmd3',
       description='Linux & Darwin TUN/TAP wrapper for Python',
       long_description=open('README.rst').read(),
-      version='2.4.1',
-      ext_modules=[Extension('pytun', sources)],
+      version='0.0.1',
+      ext_modules=[Extension('pytun_pmd3', sources)],
       classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Intended Audience :: Developers',
