@@ -1,5 +1,6 @@
 import sys
 
+from pathlib import Path
 from setuptools import setup, Extension
 
 if sys.platform == 'darwin':
@@ -7,4 +8,5 @@ if sys.platform == 'darwin':
 else:
     sources = ['linux_pytun.c']
 
-setup(name='pytun-pmd3', ext_modules=[Extension('pytun_pmd3', sources, include_dirs=['.'])])
+setup(name='pytun-pmd3', ext_modules=[
+    Extension('pytun_pmd3', sources, include_dirs=[Path(__file__).parent])])
