@@ -107,7 +107,7 @@ static PyObject *pytun_tuntap_get_name(PyObject *self, void *d) {
 #endif
 }
 
-static int pytun_tuntap_set_addr6(PyObject *self, PyObject *value, void *d) {
+static int pytun_tuntap_set_addr(PyObject *self, PyObject *value, void *d) {
     pytun_tuntap_t *tuntap = (pytun_tuntap_t *) self;
     int ret = 0;
     char cmd[1024];
@@ -194,57 +194,51 @@ static int pytun_tuntap_set_mtu(PyObject *self, PyObject *value, void *d) {
 }
 
 static PyGetSetDef pytun_tuntap_prop[] =
-        {
-                {
-                        "name",
-                        pytun_tuntap_get_name,
-                              NULL,
-                                    NULL,
-                                          NULL
-                },
-                {
-                        "addr",
-                        NULL,
-                              NULL,
-                                    NULL,
-                                          NULL
-                },
-                {
-                        "addr6",
-                        NULL,
-                        pytun_tuntap_set_addr6,
-                                    NULL,
-                                          NULL
-                },
-                {
-                        "dstaddr",
-                        NULL,
-                              NULL,
-                                    NULL, NULL
-                },
-                {
-                        "hwaddr",
-                        NULL,
-                              NULL,
-                                    NULL,
-                                          NULL
-                },
-                {
-                        "netmask",
-                        NULL,
-                              NULL,
-                                    NULL,
-                                          NULL
-                },
-                {
-                        "mtu",
-                        pytun_tuntap_get_mtu,
-                        pytun_tuntap_set_mtu,
-                                    NULL,
-                                          NULL
-                },
-                {NULL,  NULL, NULL, NULL, NULL}
-        };
+{
+    {
+     "name",
+     pytun_tuntap_get_name,
+     NULL,
+     NULL,
+     NULL
+    },
+    {
+     "addr",
+     NULL,
+     pytun_tuntap_set_addr,
+     NULL,
+     NULL
+    },
+    {
+     "dstaddr",
+     NULL,
+     NULL,
+     NULL, 
+     NULL
+    },
+    {
+     "hwaddr",
+     NULL,
+     NULL,
+     NULL,
+     NULL
+    },
+    {
+     "netmask",
+     NULL,
+     NULL,
+     NULL,
+     NULL
+    },
+    {
+     "mtu",
+     pytun_tuntap_get_mtu,
+     pytun_tuntap_set_mtu,
+     NULL,
+     NULL
+    },
+    {NULL, NULL, NULL, NULL, NULL}
+};
 
 static PyObject *pytun_tuntap_close(PyObject *self) {
     pytun_tuntap_t *tuntap = (pytun_tuntap_t *) self;
