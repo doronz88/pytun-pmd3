@@ -1,7 +1,7 @@
 [project]
 name = "pytun-pmd3"
-version = "0.0.2"
-description = "python-pytun fork with Darwin support"
+version = "1.0.0"
+description = "python-pytun fork with Darwin support (IPv6-ONLY)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
