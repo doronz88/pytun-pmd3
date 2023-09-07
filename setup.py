@@ -9,4 +9,4 @@ else:
     sources = ['linux_pytun.c']
 
 setup(name='pytun-pmd3', ext_modules=[
-    Extension('pytun_pmd3', sources, include_dirs=[Path(__file__).parent])])
+    Extension('pytun_pmd3', sources, include_dirs=[Path(__file__).parent])], extra_compile_args = ["-Wall", "-Wextra", "-pedantic"])
