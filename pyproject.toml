@@ -1,11 +1,11 @@
 [project]
 name = "pytun-pmd3"
 version = "1.0.0"
-description = "python-pytun fork with Darwin support (IPv6-ONLY)"
+description = "python-pytun fork with darwin and windows support (IPv6-ONLY)"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
-keywords = ["tun", "tuntap", "darwin", "pymobiledevice3", "macos"]
+keywords = ["tun", "tuntap", "darwin", "pymobiledevice3", "macos", "windows"]
 authors = [
     { name = "doronz88", email = "doron88@gmail.com" }
 ]
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3 :: Only",
 ]
 
@@ -29,6 +30,9 @@ test = ["pytest"]
 [project.urls]
 "Homepage" = "https://github.com/doronz88/pytun-pmd3"
 "Bug Reports" = "https://github.com/doronz88/pytun-pmd3/issues"
+
+[tool.setuptools]
+package-data = { "pytun_pmd3" = ["wintun/**/*"] }
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "tests*"]
