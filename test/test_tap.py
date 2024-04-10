@@ -1,9 +1,11 @@
-import sys
-import optparse
-import socket
-import select
 import errno
+import optparse
+import select
+import socket
+import sys
+
 import pytun
+
 
 class TunnelServer(object):
 

@@ -1,7 +1,7 @@
 # This workflows will upload a Python Package using Twine when a release is created
 # For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
 
-name: Upload python package for macOS & linux
+name: Upload python package for windows
 
 on:
   release:
@@ -14,19 +14,7 @@ concurrency:
 jobs:
   build:
     if: '! github.event.pull_request.draft'
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            arch: arm64
-          - os: macos-latest
-            arch: x86_64
-          - os: ubuntu-latest
-            arch: x86_64
-          - os: ubuntu-latest
-            arch: i686
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -37,12 +25,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -U build setuptools wheel twine cibuildwheel
+          pip install -U build setuptools wheel twine
       - name: Build and publish
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
           CIBW_ARCHS: ${{ matrix.arch }}
         run: |
-          cibuildwheel --output-dir dist
+          python3 -m build
           twine upload dist/* --skip-existing
