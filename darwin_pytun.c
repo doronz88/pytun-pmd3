@@ -286,11 +286,13 @@ static PyObject *pytun_tuntap_down(PyObject *self) {
     memset(&req, 0, sizeof(req));
     strcpy(req.ifr_name, tuntap->name);
     if (ioctl(tuntap->fd, SIOCGIFFLAGS, &req) < 0) {
+        raise_error_from_errno();
         return NULL;
     }
     if (req.ifr_flags & IFF_UP) {
         req.ifr_flags &= ~IFF_UP;
         if (ioctl(tuntap->fd, SIOCSIFFLAGS, &req) < 0) {
+            raise_error_from_errno();
             return NULL;
         }
     }
