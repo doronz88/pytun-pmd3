@@ -1,6 +1,5 @@
 [project]
 name = "pytun-pmd3"
-version = "2.0.3"
 description = "python-pytun fork with darwin and windows support (IPv6-ONLY)"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -23,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3 :: Only",
 ]
+dynamic = ["version"]
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -37,6 +37,12 @@ package-data = { "pytun_pmd3" = ["wintun/**/*"] }
 [tool.setuptools.packages.find]
 exclude = ["docs*", "tests*"]
 
+[tool.setuptools.dynamic]
+version = {attr = "pytun_pmd3._version.__version__"}
+
+[tool.setuptools_scm]
+version_file = "pytun_pmd3/_version.py"
+
 [build-system]
-requires = ["setuptools>=43.0.0", "wheel"]
+requires = ["setuptools>=43.0.0", "setuptools_scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
