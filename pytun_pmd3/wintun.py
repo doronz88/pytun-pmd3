@@ -3,7 +3,7 @@ import platform
 import subprocess
 from ctypes import POINTER, Structure, WinDLL, byref, c_ubyte, c_ulonglong, c_void_p, create_unicode_buffer, \
     get_last_error, string_at
-from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULARGE_INTEGER, ULONG, USHORT
+from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULONG, USHORT
 from pathlib import Path
 from socket import AF_INET6
 from uuid import uuid4
