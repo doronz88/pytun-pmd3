@@ -247,7 +247,10 @@ class TunTapDevice:
         return self.ip_interface_entry.InterfaceIndex
 
     def close(self) -> None:
-        wintun.WintunCloseAdapter(self.handle)
+        self.down()
+        if self.handle is not None:
+            wintun.WintunCloseAdapter(self.handle)
+        self.handle = None
 
     @property
     def addr(self) -> str:
@@ -270,7 +273,8 @@ class TunTapDevice:
         self.session = wintun.WintunStartSession(self.handle, capacity)
 
     def down(self) -> None:
-        wintun.WintunEndSession(self.session)
+        if self.session is not None:
+            wintun.WintunEndSession(self.session)
         self.session = None
 
     def read(self) -> bytes:
