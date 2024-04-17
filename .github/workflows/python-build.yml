@@ -1,35 +1,33 @@
-name: Build
+name: Build a wheel
 
 on:
     push:
+        # only trigger on branches, not on tags
         branches: '**'
 
 jobs:
-    build_wheels:
-        name: Build wheels on ${{ matrix.os }}
-        runs-on: ${{ matrix.os }}
-        strategy:
-        matrix:
-            # macos-13 is an intel runner, macos-14 is apple silicon
-            os: [ubuntu-latest, windows-latest, macos-13, macos-14]
-    
-        steps:
-        - uses: actions/checkout@v4
-    
-        - name: Set up QEMU
-            if: runner.os == 'Linux'
-            uses: docker/setup-qemu-action@v3
-            with:
-            platforms: all
-    
-        - name: Build wheels
-            uses: pypa/cibuildwheel@v2.17.0
-            env:
-            # configure cibuildwheel to build native archs ('auto'), and some
-            # emulated ones
-            CIBW_ARCHS_LINUX: x86_64 i686 aarch64
-    
-        - uses: actions/upload-artifact@v4
-            with:
-            name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
-            path: ./wheelhouse/*.whl
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+  
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.17.0
+        env:
+          CIBW_ARCHS_LINUX: x86_64 i686 aarch64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
