@@ -25,7 +25,7 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.17.0
         env:
-          CIBW_ARCHS_LINUX: x86_64 aarch64
+          CIBW_ARCHS_LINUX: x86_64 i686 aarch64
           CIBW_ARCHS_MACOS: x86_64 arm64
         with:
           output-dir: ${{ runner.temp }}/cibw-build
