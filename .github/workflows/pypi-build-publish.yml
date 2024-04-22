@@ -3,6 +3,7 @@ name: Build wheels for Linux/macOS, build sdist, and publish to PyPI
 on:
   release:
     types: published
+  workflow_dispatch:
 
 jobs:
   build_wheels:
