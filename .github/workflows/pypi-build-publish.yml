@@ -28,12 +28,12 @@ jobs:
           CIBW_ARCHS_LINUX: x86_64 aarch64
           CIBW_ARCHS_MACOS: x86_64 arm64
         with:
-          package-dir: ${{ runner.temp }}/cibw-build
+          output-dir: ${{ runner.temp }}/cibw-build
 
       - uses: actions/upload-artifact@v4
         with:
           name: cibw-wheels-${{ runner.os }}
-          path: ./wheelhouse/*.whl
+          path: ${{ runner.temp }}/cibw-build/*.whl
 
   build_sdist:
       name: Build source distribution
