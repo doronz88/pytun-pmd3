@@ -14,7 +14,7 @@ DEFAULT_ADAPTER_NAME = 'pywintun'
 DEFAULT_RING_CAPCITY = 0x400000
 
 # Load the Wintun library
-wintun = WinDLL(str(Path(__file__).parent / f'wintun/bin/{platform.uname().machine}/wintun.dll'))
+wintun = WinDLL(str(Path(__file__).parent / f'wintun/bin/{platform.uname().machine}/wintun.dll'), use_last_error=True)
 iphlpapi = WinDLL('Iphlpapi.dll')
 kernel32 = WinDLL('kernel32.dll')
 
@@ -271,6 +271,8 @@ class TunTapDevice:
 
     def up(self, capacity: int = DEFAULT_RING_CAPCITY) -> None:
         self.session = wintun.WintunStartSession(self.handle, capacity)
+        if self.session is None:
+            raise_last_error()
 
     def down(self) -> None:
         if self.session is not None:
