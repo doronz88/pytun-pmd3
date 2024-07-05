@@ -82,6 +82,7 @@ static PyObject *pytun_tuntap_new(PyTypeObject *type, PyObject *args, PyObject *
         raise_error("Failed to create tun device");
     }
     tuntap->fd = fd;
+    tuntap->ipv4 = false;
     strcpy(tuntap->name, name);
     return (PyObject *) tuntap;
 }
