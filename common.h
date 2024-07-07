@@ -12,6 +12,7 @@
 struct pytun_tuntap {
     PyObject_HEAD
     int fd;
+    int ipv4;
     char name[IFNAMSIZ];
 };
 typedef struct pytun_tuntap pytun_tuntap_t;

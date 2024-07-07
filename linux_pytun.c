@@ -109,12 +109,13 @@ static PyObject* pytun_tuntap_new(PyTypeObject* type, PyObject* args, PyObject* 
     const char* name = "";
     int flags = IFF_TUN;
     const char* dev = "/dev/net/tun";
-    char* kwlist[] = {"name", "flags", "dev", NULL};
+    char* kwlist[] = {"name", "flags", "dev", "ipv4", NULL};
+    int ipv4 = 0;
     int ret;
     const char* errmsg = NULL;
     struct ifreq req;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sis", kwlist, &name, &flags, &dev))
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|sisp", kwlist, &name, &flags, &dev, &ipv4))
     {
         return NULL;
     }
@@ -147,6 +148,7 @@ static PyObject* pytun_tuntap_new(PyTypeObject* type, PyObject* args, PyObject* 
     /* Open the TUN/TAP device */
     Py_BEGIN_ALLOW_THREADS
     tuntap->fd = open(dev, O_RDWR);
+    tuntap->ipv4 = ipv4;
     Py_END_ALLOW_THREADS
     if (tuntap->fd < 0)
     {
@@ -226,35 +228,41 @@ static PyObject* pytun_tuntap_get_addr(PyObject* self, void* d)
 {
     pytun_tuntap_t* tuntap = (pytun_tuntap_t*)self;
     struct ifreq req;
-    const char* addr;
+    char addr[INET_ADDRSTRLEN];
+    const char *addr_p;
+    struct in_addr *addr4;
 
+    if (!tuntap->ipv4) {
+        // TODO: add ipv6 support
+        raise_error("addr getter not implemented for IPv6");
+        return NULL;
+    }
     memset(&req, 0, sizeof(req));
     strcpy(req.ifr_name, tuntap->name);
     if (if_ioctl(SIOCGIFADDR, &req) < 0)
     {
         return NULL;
     }
-    addr = inet_ntop(AF_INET6,
-    &((struct sockaddr_in6*)&req.ifr_addr)->sin6_addr,
-    addr, INET6_ADDRSTRLEN);
-    if (addr == NULL)
+    addr4 = &(((struct sockaddr_in *)&req.ifr_addr)->sin_addr);
+    addr_p = inet_ntop(AF_INET, addr4, addr, INET_ADDRSTRLEN);
+    if (addr_p == NULL)
     {
         raise_error("Failed to retrieve addr");
         return NULL;
     }
 
 #if PY_MAJOR_VERSION >= 3
-    return PyUnicode_FromString(addr);
+    return PyUnicode_FromString(addr_p);
 #else
-    return PyString_FromString(addr);
+    return PyString_FromString(addr_p);
 #endif
 }
 
-static int open_socket_fd()
+static int open_socket_fd(int ipv4)
 {
     int sock;
     Py_BEGIN_ALLOW_THREADS
-            sock = socket(AF_INET6, SOCK_DGRAM, 0);
+            sock = socket(ipv4 ? AF_INET : AF_INET6, SOCK_DGRAM, 0);
     Py_END_ALLOW_THREADS
     return sock;
 }
@@ -263,14 +271,15 @@ static int pytun_tuntap_set_addr(PyObject* self, PyObject* value, void* d)
 {
     pytun_tuntap_t* tuntap = (pytun_tuntap_t*)self;
     int ret = 0;
-    int sock;
+    int sock = -1;
     struct ifreq req;
     struct in6_ifreq req6;
 #if PY_MAJOR_VERSION >= 3
     PyObject* tmp_addr;
 #endif
     const char* addr;
-    struct sockaddr_in6* sin;
+    struct sockaddr_in sin4;
+    struct sockaddr_in6* sin6;
 
 #if PY_MAJOR_VERSION >= 3
     tmp_addr = PyUnicode_AsASCIIString(value);
@@ -283,7 +292,7 @@ static int pytun_tuntap_set_addr(PyObject* self, PyObject* value, void* d)
         ret = -1;
         goto out;
     }
-    sock = open_socket_fd();
+    sock = open_socket_fd(tuntap->ipv4);
     if (sock < 0) {
         ret = -1;
         goto out;
@@ -291,35 +300,49 @@ static int pytun_tuntap_set_addr(PyObject* self, PyObject* value, void* d)
 
     memset(&req, 0, sizeof(req));
     strncpy(req.ifr_name, tuntap->name, IFNAMSIZ);
-    sin = (struct sockaddr_in6*)&req.ifr_addr;
-    sin->sin6_family = AF_INET6;
-    sin->sin6_port = 0;
-    if (inet_pton(AF_INET6,addr, &sin->sin6_addr) == 0)
-    {
-        raise_error("Bad IP address");
-        ret = -1;
-        goto out;
+    if (tuntap->ipv4) {
+        sin4.sin_family = AF_INET;
+        sin4.sin_port = 0;
+        ret = inet_pton(AF_INET, addr, &sin4.sin_addr);
+        if (ret < 0) {
+            raise_error("Bad IPv4 address");
+            ret = -1;
+            goto out;
+        }
+        req.ifr_addr = *(struct sockaddr *)&sin4;
+        Py_BEGIN_ALLOW_THREADS
+        ret = ioctl(sock, SIOCSIFADDR, &req);
+        Py_END_ALLOW_THREADS
+    } else {
+        sin6 = (struct sockaddr_in6*)&req.ifr_addr;
+        sin6->sin6_family = AF_INET6;
+        sin6->sin6_port = 0;
+        ret = inet_pton(AF_INET6, addr, &sin6->sin6_addr);
+        if (ret < 0) {
+            raise_error("Bad IPv6 address");
+            ret = -1;
+            goto out;
+        }
+        req6.ifr6_addr = *(struct in6_addr *)&sin6->sin6_addr;
+        Py_BEGIN_ALLOW_THREADS
+        ret = ioctl(sock, SIOCGIFINDEX, &req);
+        Py_END_ALLOW_THREADS
+        if ( ret < 0 ) {
+            raise_error("ioctl SIOCGIFINDEX failed");
+            ret = -1;
+            goto out;
+        }
+        req6.ifr6_ifindex = req.ifr_ifindex;
+        req6.ifr6_prefixlen = 64;
+        Py_BEGIN_ALLOW_THREADS
+        ret = ioctl(sock, SIOCSIFADDR, &req6);
+        Py_END_ALLOW_THREADS
     }
-    memcpy((char *) &req6.ifr6_addr, (char *) &sin->sin6_addr,
-           sizeof(struct in6_addr));
-    Py_BEGIN_ALLOW_THREADS
-    ret = ioctl(sock, SIOCGIFINDEX, &req);
-    Py_END_ALLOW_THREADS
     if ( ret < 0 ) {
+        raise_error("ioctl SIOCSIFADDR failed");
         ret = -1;
         goto out;
     }
-    req6.ifr6_ifindex = req.ifr_ifindex;
-    req6.ifr6_prefixlen = 64;
-    Py_BEGIN_ALLOW_THREADS
-    ret = ioctl(sock, SIOCSIFADDR, &req6);
-    Py_END_ALLOW_THREADS
-    if ( ret < 0 ) {
-        ret = -1;
-        goto out;
-    }
-
-
 
 out:
 #if PY_MAJOR_VERSION >= 3
@@ -334,27 +357,32 @@ static PyObject* pytun_tuntap_get_dstaddr(PyObject* self, void* d)
 {
     pytun_tuntap_t* tuntap = (pytun_tuntap_t*)self;
     struct ifreq req;
-    const char* dstaddr;
+    char dstaddr[INET_ADDRSTRLEN];
+    const char *dstaddr_p;
+    struct in_addr *addr4;
 
+    if (!tuntap->ipv4) {
+        // TODO: add ipv6 support
+        raise_error("dstaddr getter not implemented for IPv6");
+        return NULL;
+    }
     memset(&req, 0, sizeof(req));
     strcpy(req.ifr_name, tuntap->name);
     if (if_ioctl(SIOCGIFDSTADDR, &req) < 0)
     {
         return NULL;
     }
-    dstaddr = inet_ntop(AF_INET6,
-    &((struct sockaddr_in6*)&req.ifr_dstaddr)->sin6_addr,
-    dstaddr, INET6_ADDRSTRLEN);
-    if (dstaddr == NULL)
+    addr4 = &(((struct sockaddr_in *)&req.ifr_addr)->sin_addr);
+    dstaddr_p = inet_ntop(AF_INET, addr4, dstaddr, INET_ADDRSTRLEN);
+    if (dstaddr_p == NULL)
     {
         raise_error("Failed to retrieve dstaddr");
         return NULL;
     }
-
 #if PY_MAJOR_VERSION >= 3
-    return PyUnicode_FromString(dstaddr);
+    return PyUnicode_FromString(dstaddr_p);
 #else
-    return PyString_FromString(dstaddr);
+    return PyString_FromString(dstaddr_p);
 #endif
 }
 
@@ -367,7 +395,8 @@ static int pytun_tuntap_set_dstaddr(PyObject* self, PyObject* value, void* d)
     PyObject* tmp_dstaddr;
 #endif
     const char* dstaddr;
-    struct sockaddr_in6* sin;
+    struct sockaddr_in* sin;
+    struct sockaddr_in6* sin6;
 
 #if PY_MAJOR_VERSION >= 3
     tmp_dstaddr = PyUnicode_AsASCIIString(value);
@@ -382,13 +411,24 @@ static int pytun_tuntap_set_dstaddr(PyObject* self, PyObject* value, void* d)
     }
     memset(&req, 0, sizeof(req));
     strcpy(req.ifr_name, tuntap->name);
-    sin = (struct sockaddr_in6*)&req.ifr_dstaddr;
-    sin->sin6_family = AF_INET6;
-    if (inet_pton(AF_INET6, dstaddr, &sin->sin6_addr) == 0)
-    {
-        raise_error("Bad IP address");
-        ret = -1;
-        goto out;
+    if (tuntap->ipv4) {
+        sin = (struct sockaddr_in*)&req.ifr_dstaddr;
+        sin->sin_family = AF_INET;
+        if (inet_pton(AF_INET, dstaddr, &sin->sin_addr) == 0)
+        {
+            raise_error("Bad IP address");
+            ret = -1;
+            goto out;
+        }
+    } else {
+        sin6 = (struct sockaddr_in6*)&req.ifr_dstaddr;
+        sin6->sin6_family = AF_INET;
+        if (inet_pton(AF_INET6, dstaddr, &sin6->sin6_addr) == 0)
+        {
+            raise_error("Bad IP address");
+            ret = -1;
+            goto out;
+        }
     }
     if (if_ioctl(SIOCSIFDSTADDR, &req) < 0)
     {
@@ -459,27 +499,33 @@ static PyObject* pytun_tuntap_get_netmask(PyObject* self, void* d)
 {
     pytun_tuntap_t* tuntap = (pytun_tuntap_t*)self;
     struct ifreq req;
-    const char* netmask;
+    char netmask[INET_ADDRSTRLEN];
+    const char *netmask_p;
+    struct in_addr *netmask4;
 
+    if (!tuntap->ipv4) {
+        /* the old ipv6 code didn't work anyway */
+        raise_error("netmask getter not implemented for IPv6");
+        return NULL;
+    }
     memset(&req, 0, sizeof(req));
     strcpy(req.ifr_name, tuntap->name);
     if (if_ioctl(SIOCGIFNETMASK, &req) < 0)
     {
         return NULL;
     }
-    netmask = inet_ntop(AF_INET6,
-    &((struct sockaddr_in6*)&req.ifr_netmask)->sin6_addr,
-    netmask, INET6_ADDRSTRLEN);
-    if (netmask == NULL)
+    netmask4 = &(((struct sockaddr_in *)&req.ifr_addr)->sin_addr);
+    netmask_p = inet_ntop(AF_INET, netmask4, netmask, INET_ADDRSTRLEN);
+    if (netmask_p == NULL)
     {
         raise_error("Failed to retrieve netmask");
         return NULL;
     }
 
 #if PY_MAJOR_VERSION >= 3
-    return PyUnicode_FromString(netmask);
+    return PyUnicode_FromString(netmask_p);
 #else
-    return PyString_FromString(netmask);
+    return PyString_FromString(netmask_p);
 #endif
 }
 
@@ -492,8 +538,13 @@ static int pytun_tuntap_set_netmask(PyObject* self, PyObject* value, void* d)
     PyObject* tmp_netmask;
 #endif
     const char* netmask;
-    struct sockaddr_in6* sin;
+    struct sockaddr_in sin4;
 
+    if (!tuntap->ipv4) {
+        /* the old ipv6 code didn't work anyway */
+        raise_error("netmask setter not implemented for IPv6");
+        return -1;
+    }
 #if PY_MAJOR_VERSION >= 3
     tmp_netmask = PyUnicode_AsASCIIString(value);
     netmask = tmp_netmask != NULL ? PyBytes_AS_STRING(tmp_netmask) : NULL;
@@ -506,17 +557,18 @@ static int pytun_tuntap_set_netmask(PyObject* self, PyObject* value, void* d)
         goto out;
     }
     memset(&req, 0, sizeof(req));
-    strcpy(req.ifr_name, tuntap->name);
-    sin = (struct sockaddr_in6*)&req.ifr_netmask;
-    sin->sin6_family = AF_INET6;
-    if (inet_pton(AF_INET6, netmask, &sin->sin6_addr) == 0)
-    {
-        raise_error("Bad IP address");
+    strncpy(req.ifr_name, tuntap->name, IFNAMSIZ);
+    sin4.sin_family = AF_INET;
+    sin4.sin_port = 0;
+    if (inet_pton(AF_INET, netmask, &sin4.sin_addr) < 0) {
+        raise_error("Bad IPv4 netmask");
         ret = -1;
         goto out;
     }
+    req.ifr_netmask = *(struct sockaddr *)&sin4;
     if (if_ioctl(SIOCSIFNETMASK, &req) < 0)
     {
+        raise_error("ioctl SIOCSIFNETMASK failed");
         ret = -1;
         goto out;
     }
