@@ -13,8 +13,24 @@ from pytun_pmd3.exceptions import PyWinTunException
 DEFAULT_ADAPTER_NAME = 'pywintun'
 DEFAULT_RING_CAPCITY = 0x400000
 
+
+def get_python_arch():
+    python_compiler = platform.python_compiler()
+    if '32 bit' in python_compiler:
+        if 'Intel' in python_compiler:
+            return 'x86'
+        elif 'ARM' in python_compiler:
+            return 'arm'
+    elif '64 bit' in python_compiler:
+        if 'AMD64' in python_compiler:
+            return 'amd64'
+        elif 'ARM64' in python_compiler:
+            return 'arm64'
+    return platform.machine()  # best effort
+
+
 # Load the Wintun library
-wintun = WinDLL(str(Path(__file__).parent / f'wintun/bin/{platform.uname().machine}/wintun.dll'), use_last_error=True)
+wintun = WinDLL(str(Path(__file__).parent / f'wintun/bin/{get_python_arch()}/wintun.dll'), use_last_error=True)
 iphlpapi = WinDLL('Iphlpapi.dll')
 kernel32 = WinDLL('kernel32.dll')
 
