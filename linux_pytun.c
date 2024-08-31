@@ -24,11 +24,13 @@
 #endif
 
 
+#ifndef _UAPI_IPV6_H
 struct in6_ifreq {
     struct in6_addr ifr6_addr;
     __u32 ifr6_prefixlen;
     unsigned int ifr6_ifindex;
 };
+#endif
 
 static PyObject* pytun_error = NULL;
 
