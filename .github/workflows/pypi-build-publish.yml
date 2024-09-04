@@ -1,6 +1,10 @@
 name: Build wheels for Linux/macOS, build sdist, and publish to PyPI
 
 on:
+  push:
+    branches: [ 'master' ]
+  pull_request:
+    branches: [ 'master' ]
   release:
     types: published
 
@@ -51,6 +55,7 @@ jobs:
 
   pypi-publish:
     name: Publish release to PyPI
+    if: ${{ github.event_name == 'release' }}
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
     environment:
