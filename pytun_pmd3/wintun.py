@@ -183,7 +183,6 @@ def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
     luid = ULARGE_INTEGER()
     wintun.WintunGetAdapterLUID(adapter_handle, byref(luid))
 
-    print('luid', luid, hex(adapter_handle))
     row = MIB_IPINTERFACE_ROW()
     iphlpapi.InitializeIpInterfaceEntry(byref(row))
 
@@ -204,7 +203,10 @@ def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
 
 
 class TunTapDevice:
-    def __init__(self, name: str = DEFAULT_ADAPTER_NAME) -> None:
+    def __init__(self, name: str = DEFAULT_ADAPTER_NAME, ipv4: bool = False) -> None:
+        if ipv4:
+            raise NotImplementedError(f"IPv4 tunnels are not supported for Windows")
+
         tunnel_type_guid = (c_ubyte * 16)(*uuid4().bytes)
         requested_guid = (c_ubyte * 16)(*uuid4().bytes)
         allocated_guid = (c_ubyte * 16)()  # Empty GUID, to be filled by the function
