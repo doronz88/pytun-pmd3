@@ -116,12 +116,9 @@ class MIB_UNICASTIPADDRESS_ROW(Structure):
     ]
 
 
-# WintunCreateAdapter(const WCHAR *AdapterName, const GUID *TunnelType, const GUID *RequestedGUID, GUID *AllocatedGUID,
-# DWORD *LastError)
+# WINTUN_ADAPTER_HANDLE WintunCreateAdapter (const WCHAR * Name, const WCHAR * TunnelType, const GUID * RequestedGUID)
 wintun.WintunCreateAdapter.restype = HANDLE
-wintun.WintunCreateAdapter.argtypes = [LPCWSTR, POINTER(c_ubyte * 16),
-                                       POINTER(c_ubyte * 16), POINTER(c_ubyte * 16),
-                                       POINTER(DWORD)]
+wintun.WintunCreateAdapter.argtypes = [LPCWSTR, LPCWSTR, POINTER(c_ubyte * 16)]
 
 wintun.WintunCloseAdapter.restype = BOOL
 wintun.WintunCloseAdapter.argtypes = [HANDLE]
@@ -239,9 +236,6 @@ def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
 
 class TunTapDevice:
     def __init__(self, name: str = DEFAULT_ADAPTER_NAME) -> None:
-        tunnel_type_guid = (c_ubyte * 16)(*uuid4().bytes)
-        requested_guid = (c_ubyte * 16)(*uuid4().bytes)
-        allocated_guid = (c_ubyte * 16)()  # Empty GUID, to be filled by the function
         last_error = DWORD()
         self._name = name
 
@@ -249,12 +243,10 @@ class TunTapDevice:
         self.wait_event = None
 
         # Create an adapter
-        self.handle = wintun.WintunCreateAdapter(name, byref(tunnel_type_guid),
-                                                 byref(requested_guid),
-                                                 byref(allocated_guid), byref(last_error))
+        self.handle = wintun.WintunCreateAdapter(name, 'WinTun', None)
 
         if not self.handle:
-            raise PyWinTunException(f"Failed to create adapter. Last error: {last_error.value}")
+            raise_last_error()
 
     @property
     def luid(self) -> c_ulonglong:
