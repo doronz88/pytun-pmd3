@@ -7,7 +7,6 @@ from ctypes import POINTER, Structure, WinDLL, byref, c_ubyte, c_ulonglong, c_vo
 from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULONG, USHORT
 from pathlib import Path
 from socket import AF_INET6
-from uuid import uuid4
 
 from pytun_pmd3.exceptions import PyWinTunException
 
@@ -197,18 +196,10 @@ def raise_last_error() -> None:
     raise_windows_error(get_last_error())
 
 
-def wait_for_single_object(handle: HANDLE, timeout: int) -> None:
-    result = kernel32.WaitForSingleObject(handle, INFINITE)
+def wait_for_single_object(handle: HANDLE, timeout: int = INFINITE) -> None:
+    result = kernel32.WaitForSingleObject(handle, timeout)
     if result != WAIT_OBJECT_0:
         raise_last_error()
-
-
-async def wait_for_event(handle: HANDLE) -> None:
-    try:
-        await asyncio.to_thread(lambda: wait_for_single_object(handle, INFINITE))
-    except asyncio.CancelledError:
-        kernel32.SetEvent(handle)
-        raise
 
 
 def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
@@ -240,7 +231,7 @@ class TunTapDevice:
         self._name = name
 
         self.session = None
-        self.wait_event = None
+        self.read_wait_event = None
 
         # Create an adapter
         self.handle = wintun.WintunCreateAdapter(name, 'WinTun', None)
@@ -316,7 +307,7 @@ class TunTapDevice:
         self.session = wintun.WintunStartSession(self.handle, capacity)
         if self.session is None:
             raise_last_error()
-        self.wait_event = wintun.WintunGetReadWaitEvent(self.session)
+        self.read_wait_event = wintun.WintunGetReadWaitEvent(self.session)
 
     def down(self) -> None:
         if self.session is not None:
@@ -338,13 +329,25 @@ class TunTapDevice:
         wintun.WintunReleaseReceivePacket(self.session, packet_ptr)
         return packet_data
 
+    def wait_read(self, timeout: int = INFINITE):
+        wait_for_single_object(self.read_wait_event, timeout)
+
+    def set_read_wait_event(self):
+        kernel32.SetEvent(self.read_wait_event)
 
     async def async_read(self) -> bytes:
         while True:
             result = await asyncio.to_thread(self.read)
             if result:
                 return result
-            await wait_for_event(self.wait_event)
+            await self.async_wait_read()
+
+    async def async_wait_read(self, timeout: int = INFINITE):
+        try:
+            await asyncio.to_thread(self.wait_read, timeout)
+        except asyncio.CancelledError:
+            self.set_read_wait_event()
+            raise
 
     def write(self, payload: bytes) -> None:
         if payload.startswith(b'\x00\x00\x86\xdd'):
