@@ -2,9 +2,10 @@ import asyncio
 import ctypes
 import platform
 import subprocess
+import struct
 from ctypes import POINTER, Structure, WinDLL, byref, c_ubyte, c_ulonglong, c_void_p, create_unicode_buffer, \
-    get_last_error, string_at
-from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULONG, USHORT
+    get_last_error, string_at, c_buffer
+from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULONG, USHORT, LPVOID
 from pathlib import Path
 from socket import AF_INET6
 
@@ -38,6 +39,8 @@ FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000
 FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200
 ERROR_NO_MORE_ITEMS = 259
 WAIT_OBJECT_0 = 0
+WAIT_ABANDONED_0 = 0x80
+WAIT_TIMEOUT = 0x102
 ERROR_SUCCESS = 0
 INFINITE = 0xFFFFFFFF
 
@@ -161,6 +164,18 @@ iphlpapi.CreateUnicastIpAddressEntry.restype = DWORD
 kernel32.WaitForSingleObject.restype = DWORD
 kernel32.WaitForSingleObject.argtypes = [HANDLE, DWORD]
 
+kernel32.WaitForMultipleObjects.restype = DWORD
+kernel32.WaitForMultipleObjects.argtypes = [DWORD, POINTER(HANDLE), BOOL, DWORD]
+
+kernel32.CreateEventW.restype = HANDLE
+kernel32.CreateEventW.argtypes = [LPVOID, BOOL, BOOL, LPCWSTR]
+
+kernel32.SetEvent.restype = BOOL
+kernel32.SetEvent.argtypes = [HANDLE]
+
+kernel32.CloseHandle.restype = BOOL
+kernel32.CloseHandle.argtypes = [HANDLE]
+
 
 def get_error_message(error_code: int) -> str:
     """
@@ -196,10 +211,16 @@ def raise_last_error() -> None:
     raise_windows_error(get_last_error())
 
 
-def wait_for_single_object(handle: HANDLE, timeout: int = INFINITE) -> None:
-    result = kernel32.WaitForSingleObject(handle, timeout)
-    if result != WAIT_OBJECT_0:
-        raise_last_error()
+def wait_for_multiple_objects(handles: list[HANDLE], wait_all: bool = False, timeout: int = INFINITE) -> int:
+    handles_array = struct.pack('{}P'.format(len(handles)), *handles)
+    result = kernel32.WaitForMultipleObjects(len(handles), byref(c_buffer(handles_array)), wait_all, timeout)
+    if WAIT_OBJECT_0 <= result < WAIT_OBJECT_0 + len(handles):
+        return result - WAIT_OBJECT_0
+    if result == WAIT_TIMEOUT:
+        raise TimeoutError
+    if WAIT_ABANDONED_0 <= result < WAIT_OBJECT_0 + len(handles):
+        raise PyWinTunException(f'Wait abandoned: {result - WAIT_ABANDONED_0}')
+    raise_last_error()
 
 
 def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
@@ -232,6 +253,7 @@ class TunTapDevice:
 
         self.session = None
         self.read_wait_event = None
+        self.read_cancel_event = None
 
         # Create an adapter
         self.handle = wintun.WintunCreateAdapter(name, 'WinTun', None)
@@ -308,45 +330,44 @@ class TunTapDevice:
         if self.session is None:
             raise_last_error()
         self.read_wait_event = wintun.WintunGetReadWaitEvent(self.session)
+        self.read_cancel_event = kernel32.CreateEventW(None, True, False, None)
+        if self.read_cancel_event is None:
+            raise_last_error()
 
     def down(self) -> None:
+        if self.read_cancel_event is not None:
+            kernel32.CloseHandle(self.read_cancel_event)
+        self.read_cancel_event = None
         if self.session is not None:
             wintun.WintunEndSession(self.session)
         self.session = None
 
-    def read(self) -> bytes:
-        size = DWORD()
-        packet_ptr = wintun.WintunReceivePacket(self.session, byref(size))
-        if not packet_ptr:
+    def read(self, timeout: int = INFINITE) -> bytes | None:
+        while True:
+            size = DWORD()
+            packet_ptr = wintun.WintunReceivePacket(self.session, byref(size))
+            if packet_ptr:
+                # Create a bytes object from the packet data
+                packet_data = string_at(packet_ptr, size.value)
+                wintun.WintunReleaseReceivePacket(self.session, packet_ptr)
+                return packet_data
+
             # No packet was received
             error_code = get_last_error()
             if error_code != ERROR_NO_MORE_ITEMS:
                 raise_windows_error(error_code)
-            return b''
+            result = wait_for_multiple_objects([self.read_wait_event, self.read_cancel_event], timeout=timeout)
+            if result == 1:  # read cancelled
+                return None
 
-        # Create a bytes object from the packet data
-        packet_data = string_at(packet_ptr, size.value)
-        wintun.WintunReleaseReceivePacket(self.session, packet_ptr)
-        return packet_data
-
-    def wait_read(self, timeout: int = INFINITE):
-        wait_for_single_object(self.read_wait_event, timeout)
-
-    def set_read_wait_event(self):
-        kernel32.SetEvent(self.read_wait_event)
+    def cancel_read(self):
+        kernel32.SetEvent(self.read_cancel_event)
 
     async def async_read(self) -> bytes:
-        while True:
-            result = await asyncio.to_thread(self.read)
-            if result:
-                return result
-            await self.async_wait_read()
-
-    async def async_wait_read(self, timeout: int = INFINITE):
         try:
-            await asyncio.to_thread(self.wait_read, timeout)
+            return await asyncio.to_thread(self.read)
         except asyncio.CancelledError:
-            self.set_read_wait_event()
+            self.cancel_read()
             raise
 
     def write(self, payload: bytes) -> None:
