@@ -2,9 +2,8 @@ import asyncio
 import ctypes
 import platform
 import subprocess
-import struct
 from ctypes import POINTER, Structure, WinDLL, byref, c_ubyte, c_ulonglong, c_void_p, create_unicode_buffer, \
-    get_last_error, string_at, c_buffer
+    get_last_error, string_at
 from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULONG, USHORT, LPVOID
 from pathlib import Path
 from socket import AF_INET6
@@ -209,7 +208,7 @@ def get_last_windows_error() -> OSError:
 
 
 def wait_for_multiple_objects(handles: list[HANDLE], wait_all: bool = False, timeout: int = INFINITE) -> int:
-    result = kernel32.WaitForMultipleObjects(len(handles), byref(c_buffer(struct.pack(f'{len(handles)}P', *handles))), wait_all, timeout)
+    result = kernel32.WaitForMultipleObjects(len(handles), (HANDLE * 2)(*handles), wait_all, timeout)
     if WAIT_OBJECT_0 <= result < WAIT_OBJECT_0 + len(handles):
         return result - WAIT_OBJECT_0
     if result == WAIT_TIMEOUT:
