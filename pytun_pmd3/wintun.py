@@ -7,6 +7,7 @@ from ctypes import POINTER, Structure, WinDLL, byref, c_ubyte, c_ulonglong, c_vo
 from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, ULONG, USHORT, LPVOID
 from pathlib import Path
 from socket import AF_INET6
+from typing import Optional
 
 from pytun_pmd3.exceptions import PyWinTunException
 
@@ -332,7 +333,7 @@ class TunTapDevice:
             wintun.WintunCloseAdapter(self.handle)
         self.handle = None
 
-    def read(self, timeout: int = INFINITE) -> bytes | None:
+    def read(self, timeout: int = INFINITE) -> Optional[bytes]:
         while True:
             size = DWORD()
             packet_ptr = wintun.WintunReceivePacket(self.session, byref(size))
