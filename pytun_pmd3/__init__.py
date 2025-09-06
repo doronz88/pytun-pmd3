@@ -1,6 +1,8 @@
 import sys
 
 if sys.platform == 'win32':
-    from pytun_pmd3.wintun import TunTapDevice
+    from .wintun import TunTapDevice  # noqa: F401
+elif sys.platform == 'darwin':
+    from .darwin import TunTapDevice  # noqa: F401
 else:
-    from pytun_pmd3_c import TunTapDevice
+    from .linux import TunTapDevice  # noqa: F401
