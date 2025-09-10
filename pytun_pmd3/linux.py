@@ -3,6 +3,7 @@ import fcntl
 import os
 import socket
 import subprocess
+import typing
 from ctypes import Structure, Union, byref, c_char, c_int, c_short, c_ubyte, c_uint32, c_ulong, c_ushort, c_void_p
 from typing import Optional
 
@@ -140,7 +141,7 @@ def _raise_errno(prefix="OS error"):
 # -------------------------
 # Small helpers
 # -------------------------
-def _ioctl(sock_fd: int, req: int, buf: Union[bytes, bytearray, memoryview]) -> bytes:
+def _ioctl(sock_fd: int, req: int, buf: typing.Union[bytes, bytearray, memoryview]) -> bytes:
     b = bytearray(buf)
     try:
         return fcntl.ioctl(sock_fd, req, b, True)
@@ -225,7 +226,7 @@ class TunTapDevice:
             raise ValueError("size must be > 0")
         return os.read(self._fd, size)
 
-    def write(self, data: Union[bytes, bytearray, memoryview]) -> int:
+    def write(self, data: typing.Union[bytes, bytearray, memoryview]) -> int:
         return os.write(self._fd, bytes(data))
 
     def fileno(self) -> int:
@@ -384,7 +385,7 @@ class TunTapDevice:
         return data
 
     @hwaddr.setter
-    def hwaddr(self, mac6: Union[bytes, bytearray, memoryview]):
+    def hwaddr(self, mac6: typing.Union[bytes, bytearray, memoryview]):
         mac = bytes(mac6)
         if len(mac) != ETH_ALEN:
             raise PytunError(0, "Bad MAC address")
