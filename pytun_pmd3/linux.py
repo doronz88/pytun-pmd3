@@ -4,6 +4,7 @@ import os
 import socket
 import subprocess
 from ctypes import Structure, Union, byref, c_char, c_int, c_short, c_ubyte, c_uint32, c_ulong, c_ushort, c_void_p
+from typing import Optional
 
 # -------------------------
 # Constants (Linux headers)
@@ -139,7 +140,7 @@ def _raise_errno(prefix="OS error"):
 # -------------------------
 # Small helpers
 # -------------------------
-def _ioctl(sock_fd: int, req: int, buf: bytes | bytearray | memoryview) -> bytes:
+def _ioctl(sock_fd: int, req: int, buf: Union[bytes, bytearray, memoryview]) -> bytes:
     b = bytearray(buf)
     try:
         return fcntl.ioctl(sock_fd, req, b, True)
@@ -172,7 +173,7 @@ def _run_ip6_show(dev: str) -> str:
         raise PytunError(e.returncode, f"`ip -6 addr show dev {dev}` failed:\n{e.output.strip()}")
 
 
-def _parse_first_ipv6(out: str) -> str | None:
+def _parse_first_ipv6(out: str) -> Optional[str]:
     # pick the first "inet6 <addr>/<plen>" that's not "link"
     for line in out.splitlines():
         line = line.strip()
@@ -224,7 +225,7 @@ class TunTapDevice:
             raise ValueError("size must be > 0")
         return os.read(self._fd, size)
 
-    def write(self, data: bytes | bytearray | memoryview) -> int:
+    def write(self, data: Union[bytes, bytearray, memoryview]) -> int:
         return os.write(self._fd, bytes(data))
 
     def fileno(self) -> int:
@@ -383,7 +384,7 @@ class TunTapDevice:
         return data
 
     @hwaddr.setter
-    def hwaddr(self, mac6: bytes | bytearray | memoryview):
+    def hwaddr(self, mac6: Union[bytes, bytearray, memoryview]):
         mac = bytes(mac6)
         if len(mac) != ETH_ALEN:
             raise PytunError(0, "Bad MAC address")
