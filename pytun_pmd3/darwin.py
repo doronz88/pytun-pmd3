@@ -5,6 +5,7 @@ import socket
 import struct
 import subprocess
 from ctypes import Structure, c_char, c_int, c_ubyte, c_uint, c_uint16, c_uint32, sizeof
+from typing import Optional, Union
 
 # ---------- Darwin / macOS constants (stable across recent releases) ----------
 # Families / protocols
@@ -63,7 +64,7 @@ def _raise_errno(prefix="OS error"):
 
 
 # ---------- Core helpers ----------
-def _ioctl(fd: int, request: int, buf: bytes | bytearray | memoryview) -> bytes:
+def _ioctl(fd: int, request: int, buf: Union[bytes, bytearray, memoryview]) -> bytes:
     """Call ioctl with the given mutable buffer, returning the (possibly) modified bytes."""
     b = bytearray(buf)
     try:
@@ -98,7 +99,7 @@ def _run_ifconfig(*args: str) -> str:
         raise PytunError(e.returncode, f"ifconfig failed: {' '.join(cmd)}\n{e.output.strip()}")
 
 
-def _parse_mtu_from_ifconfig(output: str) -> int | None:
+def _parse_mtu_from_ifconfig(output: str) -> Optional[int]:
     # Lines look like: "mtu 1380" or "... mtu 1500 ..."
     for line in output.splitlines():
         parts = line.split()
@@ -112,7 +113,7 @@ def _parse_mtu_from_ifconfig(output: str) -> int | None:
 
 
 # ---------- utun creation ----------
-def _create_utun_interface(preferred_num: int | None = None) -> tuple[socket.socket, str]:
+def _create_utun_interface(preferred_num: Optional[int] = None) -> tuple[socket.socket, str]:
     """
     Create/open a utun device via kernel control. Returns (fd, ifname).
     If preferred_num is provided, try that utunN first; otherwise iterate utun0..utun254.
@@ -180,7 +181,7 @@ class TunTapDevice:
     Properties: name (str, read-only), addr (IPv6 setter via ifconfig), mtu (get/set)
     """
 
-    def __init__(self, preferred_num: int | None = None):
+    def __init__(self, preferred_num: Optional[int] = None) -> None:
         sock, name = _create_utun_interface(preferred_num)
         self._fd = sock.fileno()
         self._sock = sock  # shares fd, do not close separately
@@ -234,7 +235,7 @@ class TunTapDevice:
             raise ValueError("size must be > 0")
         return os.read(self._fd, size)
 
-    def write(self, data: bytes | bytearray | memoryview) -> int:
+    def write(self, data: Union[bytes, bytearray, memoryview]) -> int:
         if not isinstance(data, (bytes, bytearray, memoryview)):
             raise TypeError("data must be bytes-like")
         return os.write(self._fd, bytes(data))
