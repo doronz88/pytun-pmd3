@@ -1,12 +1,12 @@
 import asyncio
 import ctypes
+import ipaddress
 import platform
-import subprocess
-from ctypes import POINTER, Structure, WinDLL, byref, c_ubyte, c_ulonglong, c_void_p, create_unicode_buffer, \
+from ctypes import POINTER, Structure, Union, WinDLL, byref, c_ubyte, c_ulonglong, c_void_p, create_unicode_buffer, \
     get_last_error, string_at
 from ctypes.wintypes import BOOL, BOOLEAN, BYTE, DWORD, HANDLE, LARGE_INTEGER, LPCWSTR, LPVOID, ULONG, USHORT
 from pathlib import Path
-from socket import AF_INET6
+from socket import AF_INET, AF_INET6
 from typing import Optional
 
 from pytun_pmd3.exceptions import PyWinTunException
@@ -43,6 +43,8 @@ WAIT_ABANDONED_0 = 0x80
 WAIT_TIMEOUT = 0x102
 ERROR_SUCCESS = 0
 INFINITE = 0xFFFFFFFF
+ERROR_OBJECT_ALREADY_EXISTS = 0x80071392
+IpDadStatePreferred = 4
 
 # Define the return type and argument types of the methods
 
@@ -93,10 +95,29 @@ class MIB_IPINTERFACE_ROW(Structure):
     ]
 
 
-class SOCKADDR_INET(Structure):
+class SOCKADDR_IN(Structure):
     _fields_ = [
-        ("Ipv4", ULONG),  # Placeholder for union
-        ("Ipv6", BYTE * 16),
+        ("sin_family", USHORT),
+        ("sin_port", USHORT),
+        ("sin_addr", BYTE * 4),
+        ("sin_zero", BYTE * 8),
+    ]
+
+
+class SOCKADDR_IN6(Structure):
+    _fields_ = [
+        ("sin6_family", USHORT),
+        ("sin6_port", USHORT),
+        ("sin6_flowinfo", ULONG),
+        ("sin6_addr", BYTE * 16),
+        ("sin6_scope_id", ULONG),
+    ]
+
+
+class SOCKADDR_INET(Union):
+    _fields_ = [
+        ("Ipv4", SOCKADDR_IN),
+        ("Ipv6", SOCKADDR_IN6),
         ("si_family", USHORT),
     ]
 
@@ -115,6 +136,27 @@ class MIB_UNICASTIPADDRESS_ROW(Structure):
         ("DadState", DWORD),
         ("ScopeId", ULONG),
         ("CreationTimeStamp", LARGE_INTEGER),
+    ]
+
+
+class IN6_ADDR(Structure):
+    _fields_ = [("Byte", BYTE * 16)]
+
+
+class SOCKADDR_IN6(Structure):
+    _fields_ = [
+        ("sin6_family", USHORT),
+        ("sin6_port", USHORT),
+        ("sin6_flowinfo", ULONG),
+        ("sin6_addr", IN6_ADDR),
+        ("sin6_scope_id", ULONG),
+    ]
+
+
+class SOCKADDR_INET(Structure):
+    _fields_ = [
+        ("Ipv4", ULONG),  # Placeholder for union (unused here)
+        ("Ipv6", SOCKADDR_IN6),
     ]
 
 
@@ -158,8 +200,11 @@ iphlpapi.SetIpInterfaceEntry.argtypes = [c_void_p]
 iphlpapi.GetIpInterfaceEntry.restype = DWORD
 iphlpapi.GetIpInterfaceEntry.argtypes = [POINTER(MIB_IPINTERFACE_ROW)]
 
-iphlpapi.CreateUnicastIpAddressEntry.argtypes = [POINTER(MIB_UNICASTIPADDRESS_ROW)]
+iphlpapi.InitializeUnicastIpAddressEntry.restype = None
+iphlpapi.InitializeUnicastIpAddressEntry.argtypes = [POINTER(MIB_UNICASTIPADDRESS_ROW)]
+
 iphlpapi.CreateUnicastIpAddressEntry.restype = DWORD
+iphlpapi.CreateUnicastIpAddressEntry.argtypes = [POINTER(MIB_UNICASTIPADDRESS_ROW)]
 
 kernel32.WaitForMultipleObjects.restype = DWORD
 kernel32.WaitForMultipleObjects.argtypes = [DWORD, POINTER(HANDLE), BOOL, DWORD]
@@ -172,6 +217,9 @@ kernel32.SetEvent.argtypes = [HANDLE]
 
 kernel32.CloseHandle.restype = BOOL
 kernel32.CloseHandle.argtypes = [HANDLE]
+
+kernel32.FormatMessageW.restype = DWORD
+kernel32.FormatMessageW.argtypes = [DWORD, LPVOID, DWORD, DWORD, LPCWSTR, DWORD, LPVOID]
 
 
 def get_error_message(error_code: int) -> str:
@@ -200,11 +248,11 @@ def get_windows_error(error_code: int) -> OSError:
 
     :param error_code: The error code to raise.
     """
-    raise OSError(error_code, get_error_message(error_code))
+    return OSError(error_code, get_error_message(error_code))
 
 
 def get_last_windows_error() -> OSError:
-    """ Raises an exception with the last error code from the Windows API. """
+    """ Returns an exception with the last error code from the Windows API. """
     return get_windows_error(get_last_error())
 
 
@@ -219,32 +267,10 @@ def wait_for_multiple_objects(handles: list[HANDLE], wait_all: bool = False, tim
     raise get_last_windows_error()
 
 
-def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
-    luid = ULARGE_INTEGER()
-    wintun.WintunGetAdapterLUID(adapter_handle, byref(luid))
-
-    row = MIB_IPINTERFACE_ROW()
-    iphlpapi.InitializeIpInterfaceEntry(byref(row))
-
-    row.InterfaceLuid.QuadPart = luid.QuadPart  # Ensure correct assignment
-    row.Family = 2  # Assuming IPv4; for IPv6, use AF_INET6 or 23
-
-    row.NlMtu = mtu  # Set the new MTU value
-
-    # Attempt to set the modified interface entry
-    result = iphlpapi.SetIpInterfaceEntry(byref(row))
-    if result != 0:
-        raise PyWinTunException(f"Failed to set adapter MTU, error code: {result} ({get_error_message(result)})")
-
-    # Attempt to get the current interface entry to ensure all other fields are correctly populated
-    result = iphlpapi.GetIpInterfaceEntry(byref(row))
-    if result != 0:
-        raise PyWinTunException(f"Failed to get IP interface entry, error code: {result}")
-
-
 class TunTapDevice:
     def __init__(self, name: str = DEFAULT_ADAPTER_NAME) -> None:
         self._name = name
+        self._addr = ''
 
         self.session = None
         self.read_wait_event = None
@@ -262,8 +288,6 @@ class TunTapDevice:
     def luid(self) -> c_ulonglong:
         luid = ULARGE_INTEGER()
         wintun.WintunGetAdapterLUID(self.handle, byref(luid))
-        row = MIB_IPINTERFACE_ROW()
-        iphlpapi.InitializeIpInterfaceEntry(byref(row))
         return luid.QuadPart
 
     @property
@@ -272,7 +296,14 @@ class TunTapDevice:
         iphlpapi.InitializeIpInterfaceEntry(byref(row))
 
         row.InterfaceLuid.QuadPart = self.luid
-        row.Family = AF_INET6
+        ip = ipaddress.ip_address(self._addr if '/' not in self._addr
+                                  else self._addr.split('/')[0]) if self._addr else None
+        if ip is None or ip.version == 6:
+            row.Family = AF_INET6
+        elif ip.version == 4:
+            row.Family = AF_INET
+        else:
+            raise PyWinTunException(f'Unsupported ip version: {ip.version}')
 
         result = iphlpapi.GetIpInterfaceEntry(byref(row))
         if result != 0:
@@ -301,14 +332,41 @@ class TunTapDevice:
 
     @property
     def addr(self) -> str:
-        return ''
+        return self._addr
 
     @addr.setter
     def addr(self, value: str) -> None:
-        result = subprocess.run(f"netsh interface ipv6 set address interface={self.interface_index} address={value}/64",
-                                shell=True, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise PyWinTunException(f"Failed to set IPv6 address. Error: {result.stderr}")
+        # Supports "addr" or "addr/prefix". Defaults prefix to /64 to match previous behavior.
+        if "/" in value:
+            addr_str, prefix_str = value.split("/", 1)
+            prefix_len = int(prefix_str)
+        else:
+            addr_str = value
+            prefix_len = None
+
+        ip = ipaddress.ip_address(addr_str)
+
+        row = MIB_UNICASTIPADDRESS_ROW()
+        iphlpapi.InitializeUnicastIpAddressEntry(byref(row))
+
+        row.InterfaceLuid.QuadPart = self.luid
+        if ip.version == 6:
+            row.Address.Ipv6.sin6_family = AF_INET6
+            row.Address.Ipv6.sin6_addr[:] = ip.packed
+            row.OnLinkPrefixLength = prefix_len or 64
+        elif ip.version == 4:
+            row.Address.Ipv4.sin_family = AF_INET
+            row.Address.Ipv4.sin6_addr[:] = ip.packed
+            row.OnLinkPrefixLength = prefix_len or 32
+        else:
+            raise PyWinTunException(f'Unsupported ip version: {ip.version}')
+
+        row.DadState = IpDadStatePreferred
+
+        result = iphlpapi.CreateUnicastIpAddressEntry(byref(row))
+        if result != ERROR_SUCCESS and result != ERROR_OBJECT_ALREADY_EXISTS:
+            raise PyWinTunException(f"Failed to set ip address, error code: {result} ({get_error_message(result)})")
+        self._addr = value
 
     def up(self, capacity: int = DEFAULT_RING_CAPCITY) -> None:
         self.session = wintun.WintunStartSession(self.handle, capacity)
