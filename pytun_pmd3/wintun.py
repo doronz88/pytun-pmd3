@@ -219,29 +219,6 @@ def wait_for_multiple_objects(handles: list[HANDLE], wait_all: bool = False, tim
     raise get_last_windows_error()
 
 
-def set_adapter_mtu(adapter_handle: HANDLE, mtu: int) -> None:
-    luid = ULARGE_INTEGER()
-    wintun.WintunGetAdapterLUID(adapter_handle, byref(luid))
-
-    row = MIB_IPINTERFACE_ROW()
-    iphlpapi.InitializeIpInterfaceEntry(byref(row))
-
-    row.InterfaceLuid.QuadPart = luid.QuadPart  # Ensure correct assignment
-    row.Family = 2  # Assuming IPv4; for IPv6, use AF_INET6 or 23
-
-    row.NlMtu = mtu  # Set the new MTU value
-
-    # Attempt to set the modified interface entry
-    result = iphlpapi.SetIpInterfaceEntry(byref(row))
-    if result != 0:
-        raise PyWinTunException(f"Failed to set adapter MTU, error code: {result} ({get_error_message(result)})")
-
-    # Attempt to get the current interface entry to ensure all other fields are correctly populated
-    result = iphlpapi.GetIpInterfaceEntry(byref(row))
-    if result != 0:
-        raise PyWinTunException(f"Failed to get IP interface entry, error code: {result}")
-
-
 class TunTapDevice:
     def __init__(self, name: str = DEFAULT_ADAPTER_NAME) -> None:
         self._name = name
@@ -262,8 +239,6 @@ class TunTapDevice:
     def luid(self) -> c_ulonglong:
         luid = ULARGE_INTEGER()
         wintun.WintunGetAdapterLUID(self.handle, byref(luid))
-        row = MIB_IPINTERFACE_ROW()
-        iphlpapi.InitializeIpInterfaceEntry(byref(row))
         return luid.QuadPart
 
     @property
