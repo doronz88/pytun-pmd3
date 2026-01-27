@@ -200,11 +200,11 @@ def get_windows_error(error_code: int) -> OSError:
 
     :param error_code: The error code to raise.
     """
-    raise OSError(error_code, get_error_message(error_code))
+    return OSError(error_code, get_error_message(error_code))
 
 
 def get_last_windows_error() -> OSError:
-    """ Raises an exception with the last error code from the Windows API. """
+    """ Returns an exception with the last error code from the Windows API. """
     return get_windows_error(get_last_error())
 
 
