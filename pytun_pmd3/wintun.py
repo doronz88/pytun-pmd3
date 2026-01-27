@@ -103,6 +103,7 @@ class SOCKADDR_IN(Structure):
         ("sin_zero", BYTE * 8),
     ]
 
+
 class SOCKADDR_IN6(Structure):
     _fields_ = [
         ("sin6_family", USHORT),
